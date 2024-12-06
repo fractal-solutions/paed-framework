@@ -85,6 +85,28 @@ function encodePatterns(prices, patterns) {
     return weights;
 }
 
+function temporalWeights(prices, decayRate = 0.1) {
+    const weights = [];
+    for (let i = 0; i < prices.length; i++) {
+        weights[i] = [];
+        for (let j = 0; j < prices.length; j++) {
+            weights[i][j] = Math.exp(-decayRate * Math.abs(i - j));
+        }
+    }
+    return weights;
+}
+
+function momentumWeights(prices, timeStep = 10) {
+    const weights = [];
+    for (let i = 0; i < prices.length; i++) {
+        weights[i] = [];
+        for (let j = 0; j < prices.length; j++) {
+            weights[i][j] = (prices[j] - prices[i]) / (timeStep * Math.abs(j - i + 1));
+        }
+    }
+    return weights;
+}
+
 // Generate signals based on stable patterns
 function generateSignalsX(prices, weights) {
     const signals = [];
@@ -140,11 +162,13 @@ function PAEDFramework(data) {
     
     
     // Encode patterns and generate signals
-    const weights = encodePatterns(prices, [[...prices.slice(-10)]]); // Example: last 10 points as a pattern
+    //const weights = encodePatterns(prices, [[...prices.slice(-3)]]); // last 10 points as a pattern
+    const weights = momentumWeights(prices)
     const signals = generateSignals(minimizedPrices, weights);
 
     const minimizedPricesX = minimizedPrices.slice(-50);
     const pricesX = prices.slice(-50);
+    const signalsX = signals.slice(-10);
     
     return {
       trendEnergy,
@@ -152,7 +176,7 @@ function PAEDFramework(data) {
       liquidityFlow,
       minimizedPricesX,
       pricesX,
-      signals
+      signalsX
     };
 }
   
