@@ -1,11 +1,11 @@
-
+import NeuralNetwork from "./nn"
 // Initialize parameters
 const parameters = {
     alpha: 0.005, // Trend energy weight
     beta: 0.005, // Volatility energy weight
     gamma: 0.0001, // Liquidity flow weight
     eta: 0.0001, // Learning rate for price updates
-    noiseThreshold: 0.15, // Threshold to filter noise
+    noiseThreshold: 0.01, // Threshold to filter noise
     stopLossMultiplier: 2 // Multiplier for volatility-based stop loss
 };
   
@@ -96,14 +96,17 @@ function temporalWeights(prices, decayRate = 0.1) {
     return weights;
 }
 
-function momentumWeights(prices, timeStep = 10) {
+function momentumWeights(prices, timeStep = 1) {
     const weights = [];
+
+    // Step 1: Calculate raw weights
     for (let i = 0; i < prices.length; i++) {
         weights[i] = [];
         for (let j = 0; j < prices.length; j++) {
             weights[i][j] = (prices[j] - prices[i]) / (timeStep * Math.abs(j - i + 1));
         }
     }
+
     return weights;
 }
 
@@ -166,9 +169,9 @@ function PAEDFramework(data) {
     const weights = momentumWeights(prices)
     const signals = generateSignals(minimizedPrices, weights);
 
-    const minimizedPricesX = minimizedPrices.slice(-50);
-    const pricesX = prices.slice(-50);
-    const signalsX = signals.slice(-10);
+    const minimizedPricesX = minimizedPrices//.slice(-15);
+    const pricesX = prices//.slice(-15);
+    const signalsX = signals.slice(-15);
     
     return {
       trendEnergy,
@@ -205,11 +208,108 @@ function extractDataFromJSON(jsonData, n) {
 
 // Example Usage
 const fs = require('fs');
-const jsonData = fs.readFileSync('data/EURUSD_D1.json', 'utf8');// Adjust the path as necessary
-const n = 2000; // Specify how many last prices and volumes to retrieve
+const jsonData = fs.readFileSync('data/EURUSD_H1.json', 'utf8');// Adjust the path as necessary
+const n = 5000; // Specify how many last prices and volumes to retrieve
 const data = extractDataFromJSON(jsonData, n);
-const result = PAEDFramework(data);
-console.log(result);
+const {
+    trendEnergy,
+    volatilityEnergy,
+    liquidityFlow,
+    minimizedPricesX,
+    pricesX,
+    signalsX
+} = PAEDFramework(data);
+
+let nn_inputs = [], nn_outputs = [];
+{
+    // Calculate winrate for BUY and SELL strategies without streaks
+    let buyWins = 0;
+    let buyLosses = 0;
+    let sellWins = 0;
+    let sellLosses = 0;
+    let averageWinPips = 0;
+    let averageLossPips = 0;
+
+    const barCount = 5;
+    for (let i = 0; i < minimizedPricesX.length - barCount; i++) {
+        const mP = minimizedPricesX[i];
+        const P = pricesX[i];
+        const nextP = pricesX[i + barCount];
+        const pipDifference = (nextP - P) * 10000; // Assuming prices are in a format where 1 pip = 0.0001
+
+        nn_inputs.push([P, mP, P - mP]);
+
+        let signal;
+        if (mP > P) { // SELL signal
+            signal = 'SELL';
+            if (nextP < P) {
+                sellWins++;
+                averageWinPips += Math.sqrt(pipDifference * pipDifference);
+            } else {
+                sellLosses++;
+                averageLossPips += Math.sqrt(pipDifference * pipDifference);
+            }
+        } else if (mP < P) { // BUY signal
+            signal = 'BUY';
+            if (nextP > P) {
+                buyWins++;
+                averageWinPips += Math.sqrt(pipDifference * pipDifference);
+            } else {
+                buyLosses++;
+                averageLossPips += Math.sqrt(pipDifference * pipDifference);
+            }
+        }
+
+        nn_outputs.push(signal === null ? 0 : 1);
+    }
+
+
+
+    const totalBuyTrades = buyWins + buyLosses;
+    const totalSellTrades = sellWins + sellLosses;
+    averageWinPips /= (buyWins + sellWins);
+    averageLossPips /= (buyLosses + sellLosses);
+
+    const buyWinRate = totalBuyTrades > 0 ? (buyWins / totalBuyTrades) * 100 : 0;
+    const buyLossRate = totalBuyTrades > 0 ? (buyLosses / totalBuyTrades) * 100 : 0;
+    const sellWinRate = totalSellTrades > 0 ? (sellWins / totalSellTrades) * 100 : 0;
+    const sellLossRate = totalSellTrades > 0 ? (sellLosses / totalSellTrades) * 100 : 0;
+
+    const expectancy = (buyWinRate / 100 * averageWinPips) - (buyLossRate / 100 * averageLossPips);
+    
+    console.log(`Buy Win Rate: ${buyWinRate.toFixed(2)}%`);
+    console.log(`Sell Win Rate: ${sellWinRate.toFixed(2)}%`);
+    console.log(`Avg Win: ${averageWinPips} pips || Avg Loss: ${averageLossPips} pips`);
+    console.log(`Expectancy: ${expectancy.toFixed(2)} pips per trade`);
+    
+}
+
+// const ratio = 0.8;
+// const trainingData = nn_inputs.slice(0, Math.floor(nn_inputs.length * ratio)).map((input, index) => {
+//     return { input: input, output: [nn_outputs[index]] };
+// });
+
+// const testData = nn_inputs.slice(Math.floor(nn_inputs.length * ratio)).map((input, index) => {
+//     return { input: input, output: [nn_outputs[Math.floor(nn_inputs.length * ratio) + index]] };
+// });
+
+// const network = new NeuralNetwork(3,[8,8],2,'relu');
+// const learningRate = 0.1;
+// const epochs = 300;
+// network.train(trainingData,learningRate,epochs,true);
+// for(let input of testData){
+//     const prediction = network.forward(input);
+//     console.log(`Input: ${input}, Prediction: ${prediction}`);
+// }
+
+console.log({
+    trendEnergy,
+    volatilityEnergy,
+    liquidityFlow,
+    minimizedPricesX,
+    pricesX,
+    signalsX
+});
 
   
   
