@@ -230,12 +230,12 @@ let nn_inputs = [], nn_outputs = [];
     let averageWinPips = 0;
     let averageLossPips = 0;
 
-    const barCount = 5;
+    const barCount = 8;
     for (let i = 0; i < minimizedPricesX.length - barCount; i++) {
         const mP = minimizedPricesX[i];
         const P = pricesX[i];
         const nextP = pricesX[i + barCount];
-        const pipDifference = (nextP - P) * 10000; // Assuming prices are in a format where 1 pip = 0.0001
+        const pipDifference = (nextP - P) * 20000; // Assuming prices are in a format where 1 pip = 0.0001
 
         nn_inputs.push([P, mP, P - mP]);
 
